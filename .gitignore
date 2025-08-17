@@ -1,0 +1,12 @@
+# dependencies & builds
+node_modules/
+dist/
+coverage/
+
+# env & local
+.env
+.DS_Store
+
+# editors
+.vscode/
+.idea/
