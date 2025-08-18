@@ -1,5 +1,10 @@
 import { RowDataPacket } from "mysql2";
 import { pool } from "../db/pool";
+import {
+  LOCKOUT_WINDOW_MIN,
+  LOCKOUT_THRESHOLD,
+  LOCKOUT_DURATION_MIN,
+} from "../config/security";
 
 export interface UserRow extends RowDataPacket {
   id: string; // BIGINT as string from mysql2 by default
@@ -120,5 +125,55 @@ export const UserRepo = {
       "DELETED",
       id,
     ]);
+  },
+
+  async recordFailedLogin(userId: string) {
+    await pool.execute(
+      `UPDATE users
+       SET failed_logins = CASE
+         WHEN last_failed_login_at IS NULL OR last_failed_login_at < (NOW() - INTERVAL ? MINUTE)
+           THEN 1
+         ELSE failed_logins + 1
+       END,
+       last_failed_login_at = NOW(),
+       locked_until = CASE
+         WHEN (
+           CASE
+             WHEN last_failed_login_at IS NULL OR last_failed_login_at < (NOW() - INTERVAL ? MINUTE)
+               THEN 1
+             ELSE failed_logins + 1
+           END
+         ) >= ?
+           THEN (NOW() + INTERVAL ? MINUTE)
+         ELSE locked_until
+       END
+       WHERE id = ?;`,
+      [
+        LOCKOUT_WINDOW_MIN,
+        LOCKOUT_WINDOW_MIN,
+        LOCKOUT_THRESHOLD,
+        LOCKOUT_DURATION_MIN,
+        userId,
+      ]
+    );
+  },
+
+  async resetFailures(userId: string) {
+    await pool.execute(
+      `UPDATE users
+       SET failed_logins = 0, last_failed_login_at = NULL, locked_until = NULL
+       WHERE id = ?;`,
+      [userId]
+    );
+  },
+
+  async isLocked(userId: string): Promise<boolean> {
+    const [rows] = await pool.query<UserRow[]>(
+      "SELECT locked_until FROM users WHERE id = ? LIMIT 1",
+      [userId]
+    );
+    if (!rows.length) return false; // User not found
+    const user = rows[0];
+    return user.locked_until && new Date(user.locked_until) > new Date();
   },
 };
