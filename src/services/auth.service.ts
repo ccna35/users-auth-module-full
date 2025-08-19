@@ -10,6 +10,12 @@ import { signAccessToken } from "../utils/jwt";
 import { BadRequest, Locked, Unauthorized } from "../utils/errors";
 import { env } from "../config/env";
 import { LOCKOUT_THRESHOLD, LOCKOUT_WINDOW_MIN } from "../config/security";
+import {
+  createEmailVerificationToken,
+  setEmailVerification,
+} from "../security/emailVerification";
+import { APP_URL } from "../config/auth";
+import { sendEmail } from "./mailer";
 
 function addToDate(from: Date, duration: string) {
   // naive duration parser (m, h, d)
@@ -37,6 +43,20 @@ function isLocked(user: any): boolean {
   return user.locked_until && new Date(user.locked_until) > new Date();
 }
 
+async function sendVerificationEmail(userId: string, email: string) {
+  const { raw, hash, expiresAtSql } = createEmailVerificationToken();
+  await setEmailVerification(userId, hash, expiresAtSql);
+
+  const url = `${APP_URL}/auth/verify-email?token=${encodeURIComponent(raw)}`;
+  await sendEmail(
+    email,
+    "Verify your email",
+    `<p>Confirm your email by clicking:</p>
+     <p><a href="${url}">${url}</a></p>
+     <p>This link expires in 30 minutes.</p>`
+  );
+}
+
 export const AuthService = {
   async register(input: { name: string; email: string; password: string }) {
     const existing = await UserRepo.findByEmail(input.email);
@@ -47,6 +67,10 @@ export const AuthService = {
       email: input.email,
       password_hash,
     });
+
+    // Send verification email
+    await sendVerificationEmail(user.id, user.email);
+
     const accessToken = signAccessToken({ sub: user.id, role: user.role });
     const refresh = await this.issueRefreshToken(user.id);
     return {
@@ -87,6 +111,11 @@ export const AuthService = {
 
     // Reset failures on successful login
     await UserRepo.resetFailures(user.id);
+
+    // in POST /auth/login, after you find the user and before issuing tokens:
+    if (!user.email_verified_at) {
+      throw Unauthorized("Email not verified. Please verify your email first.");
+    }
 
     const accessToken = signAccessToken({ sub: user.id, role: user.role });
     const refresh = await this.issueRefreshToken(user.id);

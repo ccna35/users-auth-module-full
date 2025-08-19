@@ -17,6 +17,7 @@ import {
   logoutAll,
   forgotPassword,
   resetPassword,
+  verifyEmail,
 } from "./controllers/auth.controller";
 import {
   listUsers,
@@ -36,6 +37,7 @@ routes.post("/auth/refresh", validate(refreshSchema), refresh);
 routes.post("/auth/logout-all", requireAuth, logoutAll);
 routes.post("/auth/forgot-password", validate(forgotSchema), forgotPassword);
 routes.post("/auth/reset-password", validate(resetSchema), resetPassword);
+routes.get("/auth/verify-email", verifyEmail);
 
 // Me
 routes.get("/me", requireAuth, me);

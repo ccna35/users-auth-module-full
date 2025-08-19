@@ -13,6 +13,8 @@ export interface UserRow extends RowDataPacket {
   password_hash: string;
   role: "USER" | "ADMIN";
   status: "ACTIVE" | "SUSPENDED" | "DELETED";
+  email_verification_expires_at: Date | null;
+  email_verified_at: Date | null;
   created_at: Date;
   updated_at: Date | null;
 }
